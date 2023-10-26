@@ -61,6 +61,7 @@ class TimePoint {
     return TimePoint(ticks_ + duration.ToNanoseconds());
   }
 
+  // return `const TimePoint`
   const TimePoint operator+(TimeDelta duration) const {
     return TimePoint(ticks_ + duration.ToNanoseconds());
   }

@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
+// m:cpp extention on std traits
 namespace std {
 template <class T>
 inline void hash_combine(size_t& seed, T const& v) {

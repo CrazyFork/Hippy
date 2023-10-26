@@ -63,8 +63,11 @@ void LooperDriver::WaitFor(const TimeDelta& delta) {
 }
 
 void LooperDriver::Start() {
+  // m:todo CFRunLoopTimerCreate
   loop_ = CFRunLoopGetCurrent();
   CFRunLoopAddTimer(loop_, delayed_wake_timer_, kCFRunLoopDefaultMode);
+
+  // m:note , is while loop necessary
   while (true) {
     if (IsExitImmediately()) {
       return;

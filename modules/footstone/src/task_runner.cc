@@ -54,6 +54,7 @@ TaskRunner::~TaskRunner() {
   }
 }
 
+// clear 3 queues
 void TaskRunner::Clear() {
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -87,6 +88,7 @@ bool TaskRunner::AddSubTaskRunner(const std::shared_ptr<TaskRunner>& sub_runner,
   if (is_task_running) {
     worker->SetStackingMode(true);
     while (has_sub_runner_) {
+      // m:? why not terminate when this line return false?
       worker->RunTask();
     }
   }
@@ -163,17 +165,20 @@ std::unique_ptr<Task> TaskRunner::GetTopDelayTask() {
   if (task_queue_.empty() && !delayed_task_queue_.empty()) {
     std::unique_ptr<Task> result =
         std::move(const_cast<DelayedEntry&>(delayed_task_queue_.top()).second);
+    //            ^ this would remove const modifier, it should be called non-const cast
     return result;
   }
   return nullptr;
 }
 
+// get item in task_queue_ or delayed_task_queue_
 std::unique_ptr<Task> TaskRunner::GetNext() {
   TimePoint now = TimePoint::Now();
   std::unique_ptr<Task> task = popTaskFromDelayedQueueNoLock(now);
   {
+    // move valid items(the ones that already past desired triggering timing) in delayed_task_queue_ to task_queue_
     std::scoped_lock lock(queue_mutex_, delay_mutex_);
-    while (task) {
+    while (task) { // why not using a do while?
       task_queue_.push(std::move(task));
       task = popTaskFromDelayedQueueNoLock(now);
     }
@@ -210,6 +215,7 @@ std::unique_ptr<Task> TaskRunner::popTaskFromDelayedQueueNoLock(TimePoint now) {
     return nullptr;
   }
 
+  // not past timing yet
   const DelayedEntry& deadline_and_task = delayed_task_queue_.top();
   if (deadline_and_task.first > now) {
     return nullptr;
@@ -224,6 +230,7 @@ std::shared_ptr<TaskRunner> TaskRunner::GetCurrentTaskRunner() {
   return Worker::GetCurrentTaskRunner();
 }
 
+// no usage
 int32_t TaskRunner::RunnerKeyCreate(const std::function<void(void*)>& destruct) {
   FOOTSTONE_CHECK(Worker::IsTaskRunning()) << "RunnerKeyCreate cannot be run outside of the task";
   auto task_runner_id = Worker::GetCurrentTaskRunner()->GetId();
@@ -232,6 +239,7 @@ int32_t TaskRunner::RunnerKeyCreate(const std::function<void(void*)>& destruct) 
   return worker->WorkerKeyCreate(task_runner_id, destruct);
 }
 
+// no usage
 bool TaskRunner::RunnerKeyDelete(int32_t key) {
   FOOTSTONE_CHECK(Worker::IsTaskRunning()) << "RunnerKeyDelete cannot be run outside of the task";
   auto task_runner_id = Worker::GetCurrentTaskRunner()->GetId();
@@ -240,6 +248,7 @@ bool TaskRunner::RunnerKeyDelete(int32_t key) {
   return worker->WorkerKeyDelete(task_runner_id, key);
 }
 
+// no usage
 bool TaskRunner::RunnerSetSpecific(int32_t key, void* p) {
   FOOTSTONE_CHECK(Worker::IsTaskRunning()) << "RunnerSetSpecific cannot be run outside of the task";
   auto task_runner_id = Worker::GetCurrentTaskRunner()->GetId();
@@ -248,6 +257,7 @@ bool TaskRunner::RunnerSetSpecific(int32_t key, void* p) {
   return worker->WorkerSetSpecific(task_runner_id, key, p);
 }
 
+// no usage
 void* TaskRunner::RunnerGetSpecific(int32_t key) {
   FOOTSTONE_CHECK(Worker::IsTaskRunning()) << "RunnerGetSpecific cannot be run outside of the task";
   auto task_runner_id = Worker::GetCurrentTaskRunner()->GetId();
@@ -256,6 +266,7 @@ void* TaskRunner::RunnerGetSpecific(int32_t key) {
   return worker->WorkerGetSpecific(task_runner_id, key);
 }
 
+// no usage
 void TaskRunner::RunnerDestroySpecifics() {
   FOOTSTONE_CHECK(Worker::IsTaskRunning()) << "RunnerDestroySpecifics cannot be run outside of the task";
   auto task_runner_id = Worker::GetCurrentTaskRunner()->GetId();

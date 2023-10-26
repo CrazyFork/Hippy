@@ -30,6 +30,8 @@ inline namespace runner {
 class Task {
  public:
   Task();
+  // m:cpp explicit constructor
+  //
   explicit Task(std::function<void()> unit);
   ~Task() = default;
 

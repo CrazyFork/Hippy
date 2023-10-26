@@ -113,6 +113,7 @@ else ()
   message(FATAL_ERROR “Unsupported platform ${CMAKE_SYSTEM_NAME}”)
 endif ()
 
+# m:cmake
 target_sources(${PROJECT_NAME}
     PRIVATE ${SOURCE_SET}
     PUBLIC ${PUBLIC_HEADER_SET})

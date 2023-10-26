@@ -25,6 +25,7 @@
 namespace footstone {
 inline namespace check {
 
+// m:cpp checked cast
 template<typename SourceType, typename TargetType>
 static constexpr bool numeric_cast(const SourceType& source, TargetType& target) {
   auto target_value = static_cast<TargetType>(source);

@@ -34,7 +34,7 @@ class IdleTask {
  public:
   struct IdleCbParam {
     bool did_time_out;
-    TimeDelta res_time;
+    TimeDelta res_time; // precision to nano seconds
   };
 
   IdleTask(std::function<void(const IdleCbParam &)> unit, TimeDelta timeout);

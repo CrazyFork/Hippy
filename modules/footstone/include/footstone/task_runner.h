@@ -53,18 +53,25 @@ class TaskRunner {
   TaskRunner(std::string name = "");
   ~TaskRunner();
 
+  // non copyable
   TaskRunner(TaskRunner&) = delete;
   TaskRunner& operator=(TaskRunner&) = delete;
 
+  // clear all 3 queues of tasks
   void Clear();
   bool AddSubTaskRunner(const std::shared_ptr<TaskRunner> &sub_runner,
                         bool is_task_running = false);
   bool RemoveSubTaskRunner(const std::shared_ptr<TaskRunner> &sub_runner);
+
+  // m:mark
   void PostTask(std::unique_ptr<Task> task);
   template<typename F, typename... Args>
   void PostTask(F &&f, Args... args) {
     auto packaged_task = std::make_shared<std::packaged_task<std::invoke_result_t<F, Args...>()>>(
+    //                        ^ allocated on the stack
+    //
         std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+    //                                                        ^ args spread
     auto task = std::make_unique<Task>([packaged_task]() { (*packaged_task)(); });
     PostTask(std::move(task));
   }
@@ -80,6 +87,7 @@ class TaskRunner {
   }
   TimeDelta GetNextTimeDelta(TimePoint now);
 
+  // no usage
   int32_t RunnerKeyCreate(const std::function<void(void *)> &destruct);
   bool RunnerKeyDelete(int32_t key);
   bool RunnerSetSpecific(int32_t key, void *p);
@@ -121,20 +129,26 @@ class TaskRunner {
   // 友元IdleTimer调用
   std::unique_ptr<IdleTask> PopIdleTask();
   std::unique_ptr<Task> GetTopDelayTask();
+
+  // get item in task_queue_ or delayed_task_queue_
   std::unique_ptr<Task> GetNext();
 
   std::queue<std::unique_ptr<Task>> task_queue_;
   std::mutex queue_mutex_;
+
   std::queue<std::unique_ptr<IdleTask>> idle_task_queue_;
   std::mutex idle_mutex_;
+
+  // construct a customized priority queue
+  // m:mark cpp priority_queue usage
   using DelayedEntry = std::pair<TimePoint, std::unique_ptr<Task>>;
   struct DelayedEntryCompare {
     bool operator()(const DelayedEntry &left, const DelayedEntry &right) const {
       return left.first > right.first;
     }
   };
-  std::priority_queue<DelayedEntry, std::vector<DelayedEntry>, DelayedEntryCompare>
-      delayed_task_queue_;
+  std::priority_queue<DelayedEntry, std::vector<DelayedEntry>, DelayedEntryCompare> delayed_task_queue_;
+
   std::mutex delay_mutex_;
   std::weak_ptr<Worker> worker_;
   std::string name_;
@@ -142,7 +156,7 @@ class TaskRunner {
   uint32_t priority_;
   uint32_t id_;
   uint32_t group_id_; // 业务可以通过指定group_id强制不同TaskRunner在同一个Worker中运行
-  TimeDelta time_;
+  TimeDelta time_; // total running time for this group
   /*
    *  is_schedulable_ 是否可调度
    *  很多第三方库使用了thread_local变量，调度器无法在迁移taskRunner的同时迁移第三方库的Thread_local变量,

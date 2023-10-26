@@ -35,6 +35,7 @@ class WorkerImpl: public Worker, public std::enable_shared_from_this<WorkerImpl>
     Worker(std::move(name), is_schedulable, std::move(driver)) {}
   virtual void SetName(const std::string& name) override;
   virtual std::weak_ptr<Worker> GetSelf() override {
+      // m:cpp convert shared_ptr to weak_ptr
       auto self = shared_from_this();
       return std::static_pointer_cast<Worker>(self);
   }

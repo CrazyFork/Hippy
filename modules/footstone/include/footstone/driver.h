@@ -34,7 +34,9 @@ class Driver {
   Driver(): is_terminated_(false), is_exit_immediately_(false) {}
   virtual ~Driver() = default;
 
+  // notify this driver that it has work to do
   virtual void Notify() = 0;
+
   virtual void WaitFor(const TimeDelta& delta) = 0;
   virtual void Start() = 0;
   virtual void Terminate() = 0;

@@ -25,6 +25,7 @@
 #include <utility>
 
 namespace footstone {
+// m:cpp inline namespace
 inline namespace runner {
 
 std::atomic<uint32_t> Task::g_next_task_id = 1;

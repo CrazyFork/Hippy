@@ -42,6 +42,7 @@ const char* GetNameForLogSeverity(LogSeverity severity) {
 
 const char* StripDots(const char* path) {
   while (strncmp(path, "../", 3) == 0) path += 3;
+  //                                   ^ pointer arithmetic
   return path;
 }
 
@@ -62,6 +63,7 @@ std::function<void(const std::ostringstream&, LogSeverity)> LogMessage::default_
 };
 std::mutex LogMessage::mutex_;
 
+// prepare logging prefix
 LogMessage::LogMessage(LogSeverity severity, const char* file, int line, const char* condition)
     : severity_(severity), file_(file), line_(line) {
   stream_ << "[";
@@ -76,6 +78,7 @@ LogMessage::LogMessage(LogSeverity severity, const char* file, int line, const c
   if (condition) stream_ << "Check failed: " << condition << ". ";
 }
 
+// only log message before exiting current block
 LogMessage::~LogMessage() {
   stream_ << std::endl;
 

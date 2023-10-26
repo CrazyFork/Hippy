@@ -41,6 +41,7 @@ namespace footstone {
 inline namespace runner {
 
 std::atomic<uint32_t> global_worker_id{1};
+// m:cpp thread_local
 thread_local uint32_t local_worker_id;
 thread_local bool is_task_running = false;
 thread_local std::shared_ptr<TaskRunner> local_runner;
@@ -101,18 +102,23 @@ void Worker::BalanceNoLock() {
   }
   // 新的taskRunner插入到最高优先级之后，既可以保证原有队列执行顺序不变，又可以使得未执行的TaskRunner优先级高
   running_group_list_.splice(running_it, pending_group_list_);
+  //                         ^ position to insert
+  //                                     ^ elements to insert, in this case all elements inside,
+  //                                     prepend to the running_group_list_
 }
 
 bool Worker::RunTask() {
-  auto task = GetNextTask();
+  auto task = GetNextTask(); // pull task from queue
   if (!task) {
     return false;
   }
   TimePoint begin = TimePoint::Now();
+  // m:cpp thread_local usage example
   is_task_running = true;
-  task->Run();
+  task->Run(); // for branch wrapper_idle_task
   is_task_running = false;
   for (auto &it : curr_group) {
+    // add running time for all runners inside this curr_group
     it->AddTime(TimePoint::Now() - begin);
   }
   return true;
@@ -122,7 +128,7 @@ void Worker::Start(bool in_new_thread) {
   driver_->SetUnit([weak_self = GetSelf()]() {
     auto self = weak_self.lock();
     if (self) {
-      while(self->RunTask()){};
+      while(self->RunTask()){}; // self could be null right?
     }
   });
   if (in_new_thread) {
@@ -163,7 +169,15 @@ void Worker::Terminate() {
 
 void Worker::BindGroup(uint32_t father_id, const std::shared_ptr<TaskRunner> &child) {
   std::lock_guard<std::mutex> running_lock(running_mutex_);
+  /*
+   *    [
+          [a , b, c] ,
+                   ^child would be insert in any vector that any elmenent inside has group_id == father_id
+          [a , b, c] ,
+   *    ]
+   * */
   std::list<std::vector<std::shared_ptr<TaskRunner>>>::iterator group_it;
+  //                                                            ^ running_group_list_ or pending_group_list_
   bool has_found = false;
   for (group_it = running_group_list_.begin(); group_it != running_group_list_.end(); ++group_it) {
     for (auto &runner_it : *group_it) {
@@ -172,7 +186,7 @@ void Worker::BindGroup(uint32_t father_id, const std::shared_ptr<TaskRunner> &ch
         break;
       }
     }
-    if (has_found) {
+    if (has_found) { // break 2 for
       break;
     }
   }
@@ -197,7 +211,7 @@ void Worker::Bind(std::vector<std::shared_ptr<TaskRunner>> group) {
   {
     std::lock_guard<std::mutex> lock(pending_mutex_);
 
-    auto group_id = group[0]->GetGroupId();
+    auto group_id = group[0]->GetGroupId(); // can't be null ?
     if (group_id != kDefaultGroupId) {
       group_id_ = group_id;
     }
@@ -207,6 +221,7 @@ void Worker::Bind(std::vector<std::shared_ptr<TaskRunner>> group) {
   driver_->Notify();
 }
 
+// append jobs to the worker's pending_group_list_
 void Worker::Bind(std::list<std::vector<std::shared_ptr<TaskRunner>>> list) {
   {
     std::lock_guard<std::mutex> lock(pending_mutex_);
@@ -216,13 +231,14 @@ void Worker::Bind(std::list<std::vector<std::shared_ptr<TaskRunner>>> list) {
   driver_->Notify();
 }
 
+// remove runner from list
 bool EraseRunnerNoLock(std::list<std::vector<std::shared_ptr<TaskRunner>>>& list,
                        const std::shared_ptr<TaskRunner> &runner) {
   for (auto group_it = list.begin(); group_it != list.end(); ++group_it) {
     for (auto runner_it = group_it->begin(); runner_it != group_it->end(); ++runner_it) {
       if ((*runner_it)->GetId() == runner->GetId()) {
         group_it->erase(runner_it);
-        if (group_it->empty()) {
+        if (group_it->empty()) { // m:cpp iterator has empty method
           list.erase(group_it);
         }
         return true;
@@ -250,9 +266,11 @@ void Worker::UnBind(const std::shared_ptr<TaskRunner> &runner) {
 
 uint32_t Worker::GetRunningGroupSize() {
   std::lock_guard<std::mutex> lock(running_mutex_);
+  // defined in check.h
   return checked_numeric_cast<size_t, uint32_t>(running_group_list_.size());
 }
 
+// remove all task in running or pending list
 std::list<std::vector<std::shared_ptr<TaskRunner>>> Worker::UnBind() {
   std::list<std::vector<std::shared_ptr<TaskRunner>>> ret;
   {
@@ -270,6 +288,7 @@ std::list<std::vector<std::shared_ptr<TaskRunner>>> Worker::UnBind() {
 std::list<std::vector<std::shared_ptr<TaskRunner>>> Worker::ReleasePending() {
   std::lock_guard<std::mutex> lock(pending_mutex_);
 
+  // note:cpp using move to clear a list container
   std::list<std::vector<std::shared_ptr<TaskRunner>>> ret(std::move(pending_group_list_));
   pending_group_list_ = {};
   return ret;
@@ -294,6 +313,7 @@ std::list<std::vector<std::shared_ptr<TaskRunner>>> Worker::RetainActiveAndUnsch
         continue;
       }
       ret.splice(ret.end(), running_group_list_, group_it);
+      //                                         ^ remove this element, insert into ret
     }
   }
   {
@@ -313,6 +333,7 @@ std::list<std::vector<std::shared_ptr<TaskRunner>>> Worker::Retain(
     for (auto runner_it = group_it->begin(); runner_it != group_it->end(); ++runner_it) {
       if ((*runner_it)->GetId() == runner->GetId()) {
         group = *group_it;
+        // delete this group
         running_group_list_.erase(group_it);
         break;
       }
@@ -332,25 +353,29 @@ void Worker::AddImmediateTask(std::unique_ptr<Task> task) {
 
 template <class F>
 auto MakeCopyable(F&& f) {
+  // m:todo
   auto s = std::make_shared<std::decay_t<F>>(std::forward<F>(f));
   return [s](auto&&... args) -> decltype(auto) {
     return (*s)(decltype(args)(args)...);
   };
 }
 
+// m:mark
 std::unique_ptr<Task> Worker::GetNextTask() {
   if (driver_->IsExitImmediately()) {
     return nullptr;
   }
   {
+    // return a task from immediate_task_queue_
     std::lock_guard<std::mutex> lock(running_mutex_);
     if (!immediate_task_queue_.empty()) {
+      // m:cpp queue operation, move & delete
       std::unique_ptr<Task> task = std::move(immediate_task_queue_.front());
       immediate_task_queue_.pop();
       return task;
     }
     if (running_group_list_.size() > 1) {
-      SortNoLock();
+      SortNoLock(); // the mutex is already acquired at the top of the block
     }
   }
 
@@ -367,6 +392,8 @@ std::unique_ptr<Task> Worker::GetNextTask() {
   TimePoint now = TimePoint::Now();
   std::unique_ptr<IdleTask> idle_task;
   for (auto &running_group : running_group_list_) {
+    // pull a task from a runner
+    // back, last element of a vector
     auto runner = running_group.back(); // group栈顶会阻塞下面的taskRunner执行
     auto task = runner->GetNext();
     if (task) {
@@ -374,9 +401,15 @@ std::unique_ptr<Task> Worker::GetNextTask() {
       local_runner = runner;
       return task;
     } else {
+      // pull a idle_task from runner if has one
       if (!idle_task) {
+        // a idle_task is a task should run in the future
         idle_task = running_group.front()->PopIdleTask();
       }
+      // should move these lines into upper if clause then do a break if positive,
+      // this mean the timespan between the triggering time and now
+      //
+      // get timing for next idle_task
       last_wait_time = running_group.front()->GetNextTimeDelta(now);
       if (min_wait_time_ > last_wait_time) {
         min_wait_time_ = last_wait_time;
@@ -384,9 +417,11 @@ std::unique_ptr<Task> Worker::GetNextTask() {
       }
     }
   }
+  // handle idle_task timeout infomation
   if (idle_task) {
     auto wrapper_idle_task = std::make_unique<Task>(
         MakeCopyable([begin_time = idle_task->GetBeginTime(),
+    //  ^ why this is needed? I see no reason for this
                       timeout = idle_task->GetTimeout(),
                       task = std::move(idle_task),
                       time = min_wait_time_]() {
@@ -400,9 +435,11 @@ std::unique_ptr<Task> Worker::GetNextTask() {
         }));
     return wrapper_idle_task;
   }
+  // driver is done
   if (driver_->IsTerminated()) {
     return nullptr;
   }
+  // needs to pull after min_wait_time_
   driver_->WaitFor(min_wait_time_);
   return nullptr;
 }
@@ -410,6 +447,7 @@ std::unique_ptr<Task> Worker::GetNextTask() {
 bool Worker::IsTaskRunning() { return is_task_running; }
 
 // 返回值小于0表示失败
+// key is the index in array
 int32_t Worker::WorkerKeyCreate(uint32_t task_runner_id,
                                 const std::function<void(void *)> &destruct) {
   auto map_it = worker_key_map_.find(task_runner_id);
@@ -442,6 +480,7 @@ bool Worker::WorkerKeyDelete(uint32_t task_runner_id, int32_t key) {
   return true;
 }
 
+//
 bool Worker::WorkerSetSpecific(uint32_t task_runner_id, int32_t key, void *p) {
   auto map_it = specific_map_.find(task_runner_id);
   if (map_it == specific_map_.end()) {
@@ -471,6 +510,7 @@ void Worker::WorkerDestroySpecific(uint32_t task_runner_id) {
   WorkerDestroySpecificNoLock(task_runner_id);
 }
 
+// destroy worker
 void Worker::WorkerDestroySpecificNoLock(uint32_t task_runner_id) {
   auto key_array_it = worker_key_map_.find(task_runner_id);
   auto specific_it = specific_map_.find(task_runner_id);
@@ -490,7 +530,9 @@ void Worker::WorkerDestroySpecificNoLock(uint32_t task_runner_id) {
   specific_map_.erase(specific_it);
 }
 
+// remove clean up functions
 void Worker::WorkerDestroySpecifics() {
+  // m:mark cpp deletion
   for (auto map_it = specific_map_.begin(); map_it != specific_map_.end();) {
     auto key = map_it->first;
     auto next = std::next(map_it);

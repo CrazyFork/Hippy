@@ -33,6 +33,7 @@ inline uint64_t MonotonicallyIncreasingTime() {
                     .time_since_epoch();
   auto ticks = std::chrono::duration_cast<std::chrono::milliseconds>(now_ms).count();
   return footstone::check::checked_numeric_cast<long long, uint64_t>(ticks);
+  //                                            ^ m:cpp, using int64_t over this
 }
 }  // namespace base
 }  // namespace hippy

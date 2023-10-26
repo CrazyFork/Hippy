@@ -37,6 +37,7 @@ void IdleTimer::Start(std::unique_ptr<IdleTask> idle_task, TimeDelta timeout) {
   FOOTSTONE_DCHECK(timeout > TimeDelta::Zero());
   auto task_runner = task_runner_.lock();
   FOOTSTONE_DCHECK(task_runner);
+  // m:cpp smart pointer
   idle_task_ = std::make_shared<IdleTask>(idle_task->GetUnit(), TimeDelta::Max());
   std::weak_ptr<IdleTask> weak_task = idle_task_;
   task_runner->PostIdleTask(std::make_unique<IdleTask>([weak_task](const IdleCbParam& param) {
@@ -45,6 +46,9 @@ void IdleTimer::Start(std::unique_ptr<IdleTask> idle_task, TimeDelta timeout) {
       return;
     }
     shared_task->Run(param);
+    // https://en.cppreference.com/w/cpp/memory/shared_ptr/reset
+    // delete this reference by hand
+    // why needs this explicitly? doesn't shared_ptr goes out of scope deconstruct itself?
     shared_task.reset();
   }, TimeDelta::Max()));
   StartInternal(timeout);
@@ -53,13 +57,17 @@ void IdleTimer::Start(std::unique_ptr<IdleTask> idle_task, TimeDelta timeout) {
 void IdleTimer::Start(std::unique_ptr<IdleTask> idle_task) {
   auto task_runner = task_runner_.lock();
   FOOTSTONE_DCHECK(task_runner);
+  // idle_task reference the underlying function
   idle_task_ = std::make_shared<IdleTask>(idle_task->GetUnit(), TimeDelta::Max());
+  // useless line
   std::weak_ptr<IdleTask> weak_task = idle_task_;
+  // 
   task_runner->PostIdleTask(std::move(idle_task));
 }
 
 void IdleTimer::OnStop() { idle_task_.reset(); }
 
+// manually run task
 void IdleTimer::RunUserTask() {
   if (!idle_task_) {
     return;

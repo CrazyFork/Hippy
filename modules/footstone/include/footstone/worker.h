@@ -56,6 +56,7 @@ class Worker {
 
   void Notify();
   void Terminate();
+  //
   void BindGroup(uint32_t father_id, const std::shared_ptr<TaskRunner>& child);
   void Bind(std::vector<std::shared_ptr<TaskRunner>> runner);
   void Bind(std::list<std::vector<std::shared_ptr<TaskRunner>>> list);
@@ -64,8 +65,11 @@ class Worker {
   std::list<std::vector<std::shared_ptr<TaskRunner>>> UnBind();
   std::list<std::vector<std::shared_ptr<TaskRunner>>> ReleasePending();
   std::list<std::vector<std::shared_ptr<TaskRunner>>> RetainActiveAndUnschedulable();
+  // keep only the group that has this runner from running_group_list_
+  // return deleted groups from running_group_list_
   std::list<std::vector<std::shared_ptr<TaskRunner>>> Retain(const std::shared_ptr<TaskRunner>& runner);
 
+  // no usage
   inline bool GetStackingMode() { return is_stacking_mode_; }
   inline void SetStackingMode(bool is_stacking_mode) { is_stacking_mode_ = is_stacking_mode; }
   inline TimeDelta GetTimeRemaining() { return TimePoint::Now() - next_task_time_; }
@@ -90,15 +94,22 @@ class Worker {
   static std::shared_ptr<TaskRunner> GetCurrentTaskRunner();
 
   std::unique_ptr<Task> GetNextTask();
+
+  // put a task into immediate_task_queue_
   void AddImmediateTask(std::unique_ptr<Task> task);
+
   bool HasUnschedulableRunner();
+  // prepend running_group_list_ with pending_group_list_
   void BalanceNoLock();
+  //
   void SortNoLock();
 
   int32_t WorkerKeyCreate(uint32_t task_runner_id, const std::function<void(void *)>& destruct);
   bool WorkerKeyDelete(uint32_t task_runner_id, int32_t key);
+  //  no usage
   bool WorkerSetSpecific(uint32_t task_runner_id, int32_t key, void *p);
   void *WorkerGetSpecific(uint32_t task_runner_id, int32_t key);
+
   void WorkerDestroySpecific(uint32_t task_runner_id);
   void WorkerDestroySpecificNoLock(uint32_t task_runner_id);
   void WorkerDestroySpecifics();
@@ -109,13 +120,19 @@ class Worker {
 
   std::thread thread_;
   std::string name_;
+  // std::list is double-link-list
+  // each node is a group of runners
   std::list<std::vector<std::shared_ptr<TaskRunner>>> running_group_list_;
   std::list<std::vector<std::shared_ptr<TaskRunner>>> pending_group_list_;
   std::mutex running_mutex_; // 容器不是线程安全，锁住running_group_
   std::mutex pending_mutex_; // 锁住pending_group_
+  // key is task_runner_id
   std::map<uint32_t, std::array<Worker::WorkerKey, Worker::kWorkerKeysMax>> worker_key_map_;
+  // payload to destruction function in WorkerKey
   std::map<uint32_t, std::array<void *, Worker::kWorkerKeysMax>> specific_map_;
+
   std::queue<std::unique_ptr<Task>> immediate_task_queue_;
+
   TimeDelta min_wait_time_; // 距离当前时刻将要执行的任务的最短时间间隔
   TimePoint next_task_time_; // 即将执行的延迟任务预计执行的时间点，用以计算空闲时间
   bool need_balance_;

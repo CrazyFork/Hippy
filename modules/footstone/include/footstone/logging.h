@@ -42,7 +42,8 @@ inline std::ostream& operator<<(std::ostream& stream, const string_view& str_vie
     case string_view::Encoding::Latin1: {
       std::string u8;
       for (const auto& ch: str_view.latin1_value()) {
-        if (static_cast<uint8_t>(ch) < 0x80) {
+        // m:todo
+        if (static_cast<uint8_t>(ch) < 0x80) { // 128
           u8 += ch;
         } else {
           u8 += static_cast<char>((0xc0 | ch >> 6));
@@ -126,13 +127,21 @@ bool ShouldCreateLogMessage(LogSeverity severity);
 }  // namespace base
 }  // namespace tdf
 
+
+// using :: to reference the root namespace
 #define FOOTSTONE_LOG_STREAM(severity)                                                                \
   ::footstone::log::LogMessage(::footstone::log::LogSeverity::TDF_LOG_##severity, __FILE__, __LINE__, \
                           nullptr)                                                                    \
       .stream()
 
+// m:cpp operator precedence
 #define FOOTSTONE_LAZY_STREAM(stream, condition) \
   !(condition) ? (void)0 : ::footstone::log::LogMessageVoidify() & (stream)
+//                           ^ make the whole expression void,
+//                                                               ^ has lower precedence than <<
+// so if user FOOTSTONE_LAZY_STREAM(stream, true) << "this is error" would expands:
+// false ? (void) 0 : ::footstone::log::LogMessageVoidify() & (stream) << "this is error"
+// `<<` has higher precedence,
 
 #define FOOTSTONE_EAT_STREAM_PARAMETERS(ignored)                                                      \
   true || (ignored)                                                                                   \

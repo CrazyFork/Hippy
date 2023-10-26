@@ -38,6 +38,9 @@ class BaseTimer {
 
   BaseTimer() = default;
   explicit BaseTimer(const std::shared_ptr<TaskRunner>& task_runner);
+
+  // m:cpp virtual constructor
+  // marked virtual so children can call their own deconstructor correctly
   virtual ~BaseTimer();
 
   BaseTimer(BaseTimer&) = delete;

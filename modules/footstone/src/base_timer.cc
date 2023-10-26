@@ -89,17 +89,21 @@ void BaseTimer::Reset() {
   //但是在真机iphone12 pro max ,ios 16.2设备下，短时间间隔调用TimePoint::Now()返回的纳秒精度数值一样，下面的逻辑无法触发，导致动画行为失效
   //为此，特意将<改为 <=规避此bug
   //不确定其他设备是否存在bug
+
+  // already past timing
   if (scheduled_run_time_ <= TimePoint::Now()) {
     ScheduleNewTask(delay_);
     return;
   }
 
   if (delay_ > TimeDelta::Zero()) {
+    // reset desired_run_time_ = now + delay
     desired_run_time_ = TimePoint::Now() + delay_;
   } else {
     desired_run_time_ = TimePoint::Now();
   }
 
+  // ?
   if (desired_run_time_ >= scheduled_run_time_) {
     is_running_ = true;
     return;
